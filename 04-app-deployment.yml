@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-deployment
+  annotations:
+    kubernetes.io/change-cause: "Descente de version 1.0"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: jeanmassip/go-simple:1.1
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: mongodb-config
