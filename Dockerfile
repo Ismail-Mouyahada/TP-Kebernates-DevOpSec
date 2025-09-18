@@ -1,66 +1,77 @@
 ```dockerfile
-# Stage de construction
+# Stage 1: Build the application
 FROM golang:1.20-alpine AS builder
 
-# Définir le répertoire de travail
+# Set working directory
 WORKDIR /app
 
-# Copier uniquement le fichier HCL pour optimiser le cache
+# Copy only the necessary files for the build stage
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY *.hcl ./
+COPY . .
 
-# Stage d'exécution
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+
+
+# Stage 2: Create a minimal runtime image
 FROM alpine:latest
 
-# Utiliser un utilisateur non-root
-RUN addgroup -S terraform && adduser -S terraform -G terraform
+# Create a non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Définir le répertoire de travail
+# Set working directory
 WORKDIR /app
 
-# Copier uniquement les fichiers nécessaires du stage de construction
-COPY --from=builder /app/*.hcl ./
+# Copy only the built binary from the builder stage
+COPY --from=builder /app/main .
 
-# Installer terraform
-RUN apk add --no-cache terraform
+# Set ownership of the binary to the non-root user
+RUN chown appuser:appgroup main
 
-# Définir l'utilisateur
-USER terraform
+# Switch to the non-root user
+USER appuser
 
-# Exécuter terraform en tant qu'utilisateur non-root
-#  (Adapter la commande selon vos besoins)
-CMD ["terraform", "init"] # Remplacer par votre commande terraform
-
-#  Exemple avec un port pour le serveur distant (si nécessaire)
+# Expose necessary ports (if any, adjust as needed).  HCL usually doesn't require exposed ports.
 # EXPOSE 8080
 
-#  Pour une meilleure sécurité, éviter d'exposer des ports inutiles en production.
-#  Privilégier la communication interne via un réseau sécurisé (Kubernetes, etc.).
+# Set entrypoint to run the application
+ENTRYPOINT ["/app/main"]
+
+# Healthcheck (Optional, adapt as needed)
+HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8080 || exit 1
+
+# Use a slimmer image for production.  Alpine is a good choice.
+# Consider using a multi-stage build to reduce image size.  This example already does that.
+
+# Security best practices:
+# * Using a minimal base image (alpine)
+# * Non-root user
+# * Multi-stage build to minimize the final image size and remove unnecessary build tools.
+# * Explicitly setting the entrypoint
+# * Healthcheck to monitor the application's health.
+
+# Note: Replace :8080 with the actual port if your HCL application uses one.  Most HCL tools are command-line and don't directly use ports.  If this is for Terraform, consider using a separate container for the Terraform execution and just using this to provide the HCL files.
 ```
 
-**Explication des optimisations et bonnes pratiques:**
+**Explication des choix:**
 
-* **Deux stages:**  La construction est séparée en deux stages. Le premier stage (`builder`) compile le code (bien que dans ce cas, il n'y a pas de compilation car c'est du HCL). Le deuxième stage (`alpine:latest`) utilise une image minimaliste d'Alpine Linux pour l'exécution. Cela réduit considérablement la taille de l'image finale.  La copie des fichiers se fait uniquement depuis le stage `builder`, optimisant ainsi le cache.
+* **Multi-stage build:**  Sépare la phase de construction (avec `golang:1.20-alpine`) de la phase d'exécution (avec `alpine:latest`). Cela réduit considérablement la taille de l'image finale en supprimant les outils de compilation Go inutiles en production.
+* **Image de base minimale:** `alpine:latest` est une image légère et efficace.
+* **Utilisateur non-root:** Améliore la sécurité en limitant les privilèges de l'application.
+* **Copie optimisée:**  Les fichiers sont copiés de manière stratégique pour optimiser le cache de Docker.
+* **`CGO_ENABLED=0`:** Désactive cgo pour réduire la taille de l'image et améliorer la sécurité.
+* **`GOOS=linux`:** Spécifie que l'on compile pour Linux.
+* **`-a` et `-installsuffix cgo`:**  Options de compilation Go pour optimiser l'image.
+* **`HEALTHCHECK`:**  Permet aux orchestrateurs de conteneurs (comme Kubernetes) de surveiller la santé de l'application.  Adaptez l'URL à vos besoins.
+* **Commentaires explicites:**  Rend le Dockerfile plus facile à comprendre et à maintenir.
 
-* **Image de base optimisée:** `golang:1.20-alpine` est utilisé pour le stage de construction car il inclut `go` et est basé sur Alpine Linux, une distribution Linux légère. Pour le stage d'exécution, `alpine:latest` est utilisé pour sa petite taille.
+**Avant d'utiliser ce Dockerfile:**
 
-* **Gestion des dépendances:** `go mod download` télécharge les dépendances Go (même si ce n'est pas nécessaire ici, c'est une bonne pratique à inclure si vous aviez besoin de dépendances Go).  `apk add --no-cache terraform` installe Terraform sans mettre en cache les paquets non nécessaires.
-
-* **Utilisateur non-root:** Un utilisateur `terraform` est créé et utilisé pour l'exécution. Cela limite les dommages potentiels en cas de compromission du conteneur.
-
-* **Optimisation du cache:**  En séparant les étapes et en copiant uniquement les artefacts nécessaires, le Dockerfile optimise le cache.  Les couches qui ne changent pas ne seront pas reconstruites.
-
-* **Sécurité:** L'utilisation d'une image de base minimale, d'un utilisateur non-root, et l'absence d'exposition de ports inutiles améliorent la sécurité.  L'exposition des ports doit être évaluée au cas par cas et évitée si possible en production pour une meilleure sécurité.
-
-* **Commande `CMD`:**  La commande `CMD` est ajustée pour exécuter `terraform init`.  **Remplacez ceci par votre commande Terraform appropriée** (par exemple, `terraform plan`, `terraform apply`, etc.).  Vous pouvez aussi utiliser un script pour plus de complexité.
-
-**Avant de construire et d'exécuter:**
-
-* Assurez-vous d'avoir un fichier `go.mod` et `go.sum` si vous avez des dépendances Go, même si ce n'est pas le cas dans l'exemple.  Ils sont inclus pour une bonne pratique.
-* Remplacez `terraform init` par la commande Terraform que vous souhaitez exécuter dans votre conteneur.
-* Adaptez l'exposition des ports si nécessaire, mais soyez prudent et évitez d'exposer des ports inutiles en production.
+* **Remplacez `8080` par le port approprié** si votre application HCL utilise un port.  Si c'est pour Terraform, vous n'aurez probablement pas besoin d'exposer de port.
+* **Assurez-vous que votre application HCL est correctement configurée** pour fonctionner dans l'environnement du conteneur.
+* **Testez le Dockerfile**  thoroughment avant de le déployer en production.
 
 
-Ce Dockerfile fournit une base solide et sécurisée pour votre projet.  N'oubliez pas d'adapter la commande `CMD` à vos besoins spécifiques.
+Ce Dockerfile fournit une base solide pour déployer votre application HCL en production.  N'oubliez pas d'adapter les instructions en fonction des besoins spécifiques de votre projet.
