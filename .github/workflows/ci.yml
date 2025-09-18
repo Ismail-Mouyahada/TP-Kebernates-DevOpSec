@@ -1,0 +1,92 @@
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ci.yml'
+      - '*.hcl'
+      - 'Dockerfile'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and push Docker image
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/${{ github.repository }}/tp-kebernates-devopsec:${{ github.sha }} .
+          docker push ghcr.io/${{ github.repository }}/tp-kebernates-devopsec:${{ github.sha }}
+
+      - name: Deploy to Kubernetes (if main branch)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Remplacer par vos commandes de déploiement Kubernetes
+          # Exemple avec kubectl:
+          # kubectl apply -f k8s/deployment.yaml
+          echo "Deployment to Kubernetes on main branch would happen here..."
+
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install terraform
+        uses: hashicorp/setup-terraform@v2
+      
+      - name: Lint HCL code
+        run: |
+          terraform fmt -check . # Vérifie le formatage
+          # Ajouter d'autres outils de linting si nécessaire (ex: tflint)
+
+
+  # Note: Pas de jobs Node.js/Python car le langage est HCL.  Ces jobs seraient ajoutés si le projet utilisait aussi Node.js ou Python.
+
+  #Exemple d'un job Node.js (à décommenter si nécessaire):
+  # node-test:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+  #     - name: Use Node.js 16
+  #       uses: actions/setup-node@v3
+  #       with:
+  #         node-version: 16
+  #     - name: Install dependencies
+  #       run: npm install
+  #     - name: Run tests
+  #       run: npm test
+
+
+notifications:
+  on_failure:
+    paths-ignore:
+      - 'docs/**'
+    email:
+      subject: "GitHub Actions Workflow Failure"
+      body: "The workflow ${{ github.workflow }} failed for ${{ github.repository }} on branch ${{ github.ref }}. Check the logs for details."
+
+```
+
+**Avant d'utiliser ce workflow:**
+
+* **Remplacez les placeholders:**  Remplacez  `# Remplacer par vos commandes de déploiement Kubernetes` par vos commandes `kubectl` ou autres outils pour déployer votre application sur Kubernetes.  Assurez-vous que les fichiers de configuration Kubernetes (`k8s/deployment.yaml` dans l'exemple) sont présents dans votre dépôt.  Adaptez le chemin si nécessaire.
+* **Gestionnaire de secrets:**  Si vos commandes Kubernetes nécessitent des identifiants, stockez-les en tant que secrets GitHub pour éviter de les commiter directement dans votre code.  Accédez-y dans votre workflow via `${{ secrets.YOUR_SECRET_NAME }}`.
+* **Authentification Docker:**  Pour pousser l'image vers le registre Docker, vous devrez probablement configurer l'authentification Docker.  Cela peut se faire via un Personal Access Token (PAT) GitHub ou une autre méthode d'authentification.  Consultez la documentation de `docker/setup-buildx-action` pour plus d'informations.
+* **TFLint (facultatif):**  Ajoutez l'installation et l'exécution de `tflint` dans le job `lint` pour une analyse de code HCL plus complète.
+* **Tests (facultatif):**  Si vous ajoutez des tests à votre projet, modifiez le workflow en conséquence.
+
+
+Ce workflow fournit une base solide.  Adaptez-le à vos besoins spécifiques et à la structure de votre projet.  N'oubliez pas de tester le workflow après l'avoir configuré.
