@@ -5,13 +5,11 @@ on:
   push:
     branches:
       - main
-    paths:
-      - '.github/workflows/ci.yml'
-      - '*.hcl'
-      - 'Dockerfile'
+      - develop # Add other branches as needed
   pull_request:
     branches:
       - main
+      - develop # Add other branches as needed
 
 jobs:
   build-and-push:
@@ -31,62 +29,49 @@ jobs:
       - name: Deploy to Kubernetes (if main branch)
         if: github.ref == 'refs/heads/main'
         run: |
-          # Remplacer par vos commandes de déploiement Kubernetes
-          # Exemple avec kubectl:
-          # kubectl apply -f k8s/deployment.yaml
-          echo "Deployment to Kubernetes on main branch would happen here..."
+          # Replace with your Kubernetes deployment commands
+          kubectl apply -f k8s/deployment.yaml
+          # Consider using kubectl rollout status to check deployment status
 
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Install terraform
-        uses: hashicorp/setup-terraform@v2
-      
-      - name: Lint HCL code
-        run: |
-          terraform fmt -check . # Vérifie le formatage
-          # Ajouter d'autres outils de linting si nécessaire (ex: tflint)
-
-
-  # Note: Pas de jobs Node.js/Python car le langage est HCL.  Ces jobs seraient ajoutés si le projet utilisait aussi Node.js ou Python.
-
-  #Exemple d'un job Node.js (à décommenter si nécessaire):
-  # node-test:
+  # Lint (Optional -  replace with your linting tool if applicable)
+  # Since HCL doesn't have a standard linter as widely used as ESLint for JS, this section is commented out.
+  # Uncomment and adapt if you have a specific linter for HCL
+  # lint:
   #   runs-on: ubuntu-latest
   #   steps:
   #     - name: Checkout code
   #       uses: actions/checkout@v3
-  #     - name: Use Node.js 16
-  #       uses: actions/setup-node@v3
-  #       with:
-  #         node-version: 16
-  #     - name: Install dependencies
-  #       run: npm install
-  #     - name: Run tests
-  #       run: npm test
+  #     - name: Install linter
+  #       run: # Install your HCL linter here (e.g., using apt, npm, etc.)
+  #     - name: Run linter
+  #       run: # Run your HCL linter here
+  #       if: success()
 
+# Notifications (using email - adapt to your notification preference)
+      - name: Send email notification on failure
+        if: failure()
+        uses: appleboy/email@v1.2.5
+        with:
+          host: smtp.example.com # Replace with your SMTP server
+          port: 587 # Replace with your SMTP port
+          username: your_email@example.com # Replace with your email
+          password: ${{ secrets.EMAIL_PASSWORD }} # Replace with your email password
+          to: recipient_email@example.com # Replace with recipient email
+          subject: GitHub Actions Workflow Failed - TP-Kebernates-DevOpSec
+          body: |
+            The GitHub Actions workflow for TP-Kebernates-DevOpSec failed.
+            Check the workflow logs for details.
+            Workflow URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-notifications:
-  on_failure:
-    paths-ignore:
-      - 'docs/**'
-    email:
-      subject: "GitHub Actions Workflow Failure"
-      body: "The workflow ${{ github.workflow }} failed for ${{ github.repository }} on branch ${{ github.ref }}. Check the logs for details."
 
 ```
 
 **Avant d'utiliser ce workflow:**
 
-* **Remplacez les placeholders:**  Remplacez  `# Remplacer par vos commandes de déploiement Kubernetes` par vos commandes `kubectl` ou autres outils pour déployer votre application sur Kubernetes.  Assurez-vous que les fichiers de configuration Kubernetes (`k8s/deployment.yaml` dans l'exemple) sont présents dans votre dépôt.  Adaptez le chemin si nécessaire.
-* **Gestionnaire de secrets:**  Si vos commandes Kubernetes nécessitent des identifiants, stockez-les en tant que secrets GitHub pour éviter de les commiter directement dans votre code.  Accédez-y dans votre workflow via `${{ secrets.YOUR_SECRET_NAME }}`.
-* **Authentification Docker:**  Pour pousser l'image vers le registre Docker, vous devrez probablement configurer l'authentification Docker.  Cela peut se faire via un Personal Access Token (PAT) GitHub ou une autre méthode d'authentification.  Consultez la documentation de `docker/setup-buildx-action` pour plus d'informations.
-* **TFLint (facultatif):**  Ajoutez l'installation et l'exécution de `tflint` dans le job `lint` pour une analyse de code HCL plus complète.
-* **Tests (facultatif):**  Si vous ajoutez des tests à votre projet, modifiez le workflow en conséquence.
+* **Remplacez les placeholders:**  Remplacez  `ghcr.io/${{ github.repository }}/tp-kebernates-devopsec` par votre registre Docker et le nom de votre image.  Remplacez les instructions de déploiement Kubernetes (`kubectl apply -f k8s/deployment.yaml`) par vos propres commandes.  Configurez vos informations SMTP pour les notifications par email.  Créez un secret GitHub nommé `EMAIL_PASSWORD` avec votre mot de passe SMTP.
+* **Adaptez le linting (facultatif):**  Si vous utilisez un outil de linting pour HCL, décommentez la section `lint` et ajoutez les instructions appropriées pour l'installer et l'exécuter.
+* **Gestion des secrets:**  Stocker vos mots de passe et autres informations sensibles en tant que secrets GitHub pour éviter de les commiter directement dans votre code.
+* **Structure de projet:** Assurez-vous que votre fichier `Dockerfile` se trouve à la racine de votre dépôt.  Le fichier `k8s/deployment.yaml` (ou votre fichier de configuration Kubernetes équivalent) doit également exister.
 
 
-Ce workflow fournit une base solide.  Adaptez-le à vos besoins spécifiques et à la structure de votre projet.  N'oubliez pas de tester le workflow après l'avoir configuré.
+Ce workflow fournit une base solide. Vous pouvez l'étendre avec des étapes supplémentaires, comme des tests unitaires, une analyse de la vulnérabilité de l'image Docker, etc., selon les besoins de votre projet.  N'oubliez pas de consulter la documentation GitHub Actions pour plus d'informations sur les actions et les options disponibles.
