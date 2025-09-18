@@ -1,0 +1,67 @@
+```yaml
+version: "3.9"
+services:
+  tp-kebernates-devopsec:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Assurez-vous d'avoir un Dockerfile dans le répertoire courant
+    ports:
+      - "8080:8080" # Adaptez le port si nécessaire
+    environment:
+      - MY_VARIABLE=my_value # Ajoutez vos variables d'environnement ici
+      - ANOTHER_VARIABLE=another_value
+    volumes:
+      - ./app:/app # Adaptez le chemin si nécessaire.  Monte le répertoire courant dans le conteneur.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"] # Remplacez par votre endpoint de healthcheck
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - my-network # Facultatif : crée un réseau pour la communication inter-services
+
+
+networks:
+  my-network: # Facultatif : crée un réseau pour la communication inter-services
+
+volumes:
+  # Ajouter des volumes si nécessaire, par exemple pour des données persistantes.
+  # Exemple:
+  # app_data:
+
+```
+
+**Explications:**
+
+* **`version: "3.9"`:** Spécifie la version de la syntaxe docker-compose.
+* **`services:`:** Définit les services de l'application.  Ici, un seul service `tp-kebernates-devopsec` est défini.
+* **`build:`:**  Indique comment construire l'image Docker.  `context` précise le répertoire courant, et `dockerfile` le fichier Dockerfile à utiliser.  **Assurez-vous d'avoir un fichier `Dockerfile` dans le même répertoire que ce fichier `docker-compose.yml`**.
+* **`ports:`:** Mappe le port 8080 de l'hôte au port 8080 du conteneur.  Adaptez ceci selon les besoins de votre application.
+* **`environment:`:** Définit les variables d'environnement pour le conteneur.  Remplacez les valeurs par vos propres variables.
+* **`volumes:`:** Monte le répertoire `./app` de l'hôte dans le répertoire `/app` du conteneur.  Ceci permet de partager le code source entre l'hôte et le conteneur. Adaptez le chemin selon votre structure de projet.  Vous pouvez ajouter d'autres volumes si nécessaire pour des données persistantes.
+* **`healthcheck:`:** Définit un healthcheck pour vérifier la santé du service.  Le `test` utilise `curl` pour vérifier un endpoint `/health` sur le port 8080.  **Remplacez ceci par l'endpoint de healthcheck approprié pour votre application.**  `interval`, `timeout` et `retries` configurent la fréquence, le délai d'attente et le nombre de tentatives de vérification.
+* **`networks:`:**  Définit un réseau nommé `my-network`. Ceci est optionnel, mais utile si vous avez plusieurs services qui doivent communiquer entre eux.  Le service `tp-kebernates-devopsec` est connecté à ce réseau.
+* **`volumes:`:**  Section pour déclarer des volumes nommés.  Un exemple est donné, mais il est commenté car il n'est pas nécessaire dans ce cas précis si vous utilisez le volume `./app:/app`.
+
+**Avant d'utiliser ce fichier:**
+
+1. **Créez un fichier `Dockerfile`:**  Ce fichier décrit comment construire l'image Docker de votre application.  Un exemple simple pour une application HCL pourrait ressembler à ceci:
+
+```dockerfile
+FROM golang:1.20
+
+WORKDIR /app
+
+COPY . .
+
+RUN go mod download
+
+CMD ["./your_hcl_application"] # Remplacez par la commande pour lancer votre application
+```
+
+2. **Remplacez les placeholders:**  Modifiez les ports, les variables d'environnement, le chemin des volumes et l'endpoint de healthcheck pour qu'ils correspondent à votre application.
+
+3. **Construisez et lancez l'application:**  Exécutez `docker-compose up -d --build` dans le répertoire contenant `docker-compose.yml` et `Dockerfile`.
+
+
+N'oubliez pas d'adapter ce fichier à votre application HCL spécifique.  Ce fichier fournit une base solide, mais il peut nécessiter des modifications selon vos besoins.
