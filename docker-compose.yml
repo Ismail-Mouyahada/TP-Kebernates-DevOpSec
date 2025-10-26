@@ -1,77 +1,260 @@
-```yaml
-version: "3.9"
-services:
-  tp-kebernates-devopsec:
-    build:
-      context: .
-      dockerfile: Dockerfile  # Assurez-vous d'avoir un Dockerfile dans le r�pertoire courant
-    ports:
-      - "8080:8080" # Adaptez le port si n�cessaire
-    environment:
-      - MY_ENV_VAR=my_value # Ajoutez vos variables d'environnement ici
-      - ANOTHER_ENV_VAR=another_value
-    volumes:
-      - ./app:/app # Remplacez ./app par le chemin de votre application
-    networks:
-      - my-app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"] # Remplacez par votre endpoint de healthcheck
-      interval: 30s
-      timeout: 10s
-      retries: 3
+Voici un fichier `docker-compose.yml` et un `Dockerfile` associé, conçus pour un projet centré sur HCL (HashiCorp Configuration Language). Ce setup est idéal pour les développeurs travaillant avec Terraform, Vault, Consul, Nomad, Packer ou d'autres outils HashiCorp, en fournissant un environnement isolé et prêt à l'emploi.
 
-networks:
-  my-app-network:
+---
 
-volumes:
-  # Ajoutez des volumes persistants ici si n�cessaire, par exemple :
-  # app-data:
+### Contexte du projet HCL
 
-```
+Un "projet HCL" implique généralement l'écriture et l'exécution de fichiers de configuration HCL pour des outils HashiCorp. Ce `docker-compose.yml` met en place :
 
-**Explication:**
+1.  **`hcl-cli-tools`**: Un conteneur de développement qui inclut les principales CLIs HashiCorp (Terraform, Vault, Consul, Packer, Nomad). Il permet d'exécuter des commandes HCL directement depuis votre projet local.
+2.  **`minio` (Optionnel)**: Un serveur de stockage compatible S3. C'est souvent utile comme backend local pour Terraform (pour stocker l'état) ou pour simuler d'autres services cloud pendant le développement.
 
-* **`version: "3.9"`:** Sp�cifie la version de Docker Compose.
-* **`services:`:** D�finit les services de l'application.
-* **`tp-kebernates-devopsec:`:**  Nom du service principal.  Adaptez au besoin.
-* **`build:`:**  Indique � Docker Compose de construire l'image � partir d'un `Dockerfile`. Assurez-vous que vous avez un fichier `Dockerfile` dans le m�me r�pertoire que ce fichier `docker-compose.yml`.  Ce fichier `Dockerfile` doit contenir les instructions pour construire l'image de votre application HCL.  Exemple simple (� adapter):
+---
 
+### Fichiers à créer
+
+Vous aurez besoin de deux fichiers :
+
+1.  `docker-compose.yml`
+2.  `Dockerfile` (dans le même répertoire que `docker-compose.yml`)
+
+---
+
+### `Dockerfile` pour `hcl-cli-tools`
+
+Ce `Dockerfile` construira l'image pour notre conteneur de développement HCL, en y incluant les CLIs nécessaires.
+
+**`Dockerfile`**
 ```dockerfile
-FROM golang:1.20
+# Dockerfile pour le conteneur de développement HCL CLI Tools
+# Utilise une image Alpine légère comme base, avec Git pré-installé.
+FROM alpine/git:latest
 
+# Définition des arguments pour les versions des outils HashiCorp.
+# Cela permet de modifier facilement les versions sans reconstruire tout le Dockerfile.
+ARG TERRAFORM_VERSION="1.8.4"
+ARG VAULT_VERSION="1.17.0"
+ARG CONSUL_VERSION="1.18.0"
+ARG PACKER_VERSION="1.10.3"
+ARG NOMAD_VERSION="1.8.0"
+
+# Installation des dépendances système nécessaires
+# curl pour télécharger, unzip pour décompresser, bash pour un shell plus complet.
+RUN apk add --no-cache \
+    curl \
+    unzip \
+    bash \
+    jq # jq est souvent utile pour parser du JSON
+
+# Création d'un répertoire temporaire pour télécharger les binaires
+WORKDIR /tmp/hashicorp_downloads
+
+# --- Installation de Terraform ---
+RUN curl -LO "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" && \
+    unzip "terraform_${TERRAFORM_VERSION}_linux_amd64.zip" -d /usr/local/bin && \
+    rm "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+
+# --- Installation de Vault ---
+RUN curl -LO "https://releases.hashicorp.com/vault/${VAULT_VERSION}/vault_${VAULT_VERSION}_linux_amd64.zip" && \
+    unzip "vault_${VAULT_VERSION}_linux_amd64.zip" -d /usr/local/bin && \
+    rm "vault_${VAULT_VERSION}_linux_amd64.zip"
+
+# --- Installation de Consul ---
+RUN curl -LO "https://releases.hashicorp.com/consul/${CONSUL_VERSION}/consul_${CONSUL_VERSION}_linux_amd64.zip" && \
+    unzip "consul_${CONSUL_VERSION}_linux_amd64.zip" -d /usr/local/bin && \
+    rm "consul_${CONSUL_VERSION}_linux_amd64.zip"
+
+# --- Installation de Packer ---
+RUN curl -LO "https://releases.hashicorp.com/packer/${PACKER_VERSION}/packer_${PACKER_VERSION}_linux_amd64.zip" && \
+    unzip "packer_${PACKER_VERSION}_linux_amd64.zip" -d /usr/local/bin && \
+    rm "packer_${PACKER_VERSION}_linux_amd64.zip"
+
+# --- Installation de Nomad ---
+RUN curl -LO "https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_linux_amd64.zip" && \
+    unzip "nomad_${NOMAD_VERSION}_linux_amd64.zip" -d /usr/local/bin && \
+    rm "nomad_${NOMAD_VERSION}_linux_amd64.zip"
+
+# Nettoyage du répertoire de téléchargement temporaire
+RUN rm -rf /tmp/hashicorp_downloads
+
+# Définition du répertoire de travail par défaut
 WORKDIR /app
 
-COPY go.mod ./
-COPY go.sum ./
-RUN go mod download
+# Définition de la commande par défaut : rester actif.
+# Cela permet au conteneur de rester en cours d'exécution si "docker compose up" est utilisé sans commande spécifique.
+# Pour l'interaction, il est recommandé d'utiliser "docker compose run hcl-cli-tools <command>".
+CMD ["tail", "-f", "/dev/null"]
 
-COPY . ./
-
-RUN go build -o /app/tp-kebernates-devopsec
-
-EXPOSE 8080
-
-CMD ["./tp-kebernates-devopsec"]
+# Expose les ports par défaut de certains outils HCL si jamais ils devaient être lancés en mode serveur dans ce conteneur
+# (Bien que ce conteneur soit principalement pour les CLIs, cela peut être utile pour des tests locaux rapides)
+EXPOSE 8200 # Vault
+EXPOSE 8500 # Consul
+EXPOSE 4646 # Nomad
 ```
 
-* **`ports:`:** Mappe le port 8080 de l'h�te au port 8080 du conteneur.  Modifiez si n�cessaire.
-* **`environment:`:** D�finit les variables d'environnement pour le conteneur.  Remplacez les exemples par vos propres variables.
-* **`volumes:`:** Monte un volume pour que les modifications dans le r�pertoire `/app` sur votre h�te soient refl�t�es dans le conteneur.  Adaptez le chemin `./app` au chemin de votre application.
-* **`networks:`:** D�finit le r�seau pour le service.  Ici, un r�seau nomm� `my-app-network` est cr��.
-* **`healthcheck:`:** D�finit un contr�le de sant� pour le service.  Il v�rifie si l'endpoint `/health` r�pond avec un code 200. Adaptez l'URL selon votre application.
-* **`networks:`:** D�finit la section r�seaux.
-* **`volumes:`:**  Section pour d�finir les volumes nomm�s, utile pour la persistance de donn�es (ici comment� car non requis dans votre cas).
+---
 
+### `docker-compose.yml`
 
-**Avant d'ex�cuter:**
+Ce fichier définit les services, volumes, ports et variables d'environnement nécessaires.
 
-1. **Cr�er un `Dockerfile`:**  Cr�ez un fichier `Dockerfile` dans le m�me r�pertoire que le `docker-compose.yml` avec les instructions pour construire votre image HCL.  L'exemple ci-dessus est pour une application Go, mais vous devrez l'adapter � votre langage (HCL n�cessite un interpr�teur).  Vous devrez peut-�tre utiliser une image de base avec Terraform ou autre outil HCL install�.
-2. **Adapter les ports et les variables d'environnement:** Modifiez les ports et les variables d'environnement selon vos besoins.
-3. **Adapter le healthcheck:** Modifiez l'endpoint de healthcheck pour correspondre � votre application.
-4. **Adapter le chemin du volume:** Modifiez le chemin du volume si votre application n'est pas dans un r�pertoire nomm� `app`.
+**`docker-compose.yml`**
+```yaml
+# Version de la syntaxe Docker Compose. '3.8' est une version stable et récente.
+version: '3.8'
 
+# Section des services. Chaque service représente un conteneur.
+services:
+  # Service principal pour l'environnement de développement HCL.
+  hcl-cli-tools:
+    # Indique à Docker Compose de construire l'image à partir du Dockerfile
+    # situé dans le répertoire courant ('.').
+    build: .
+    # Nom du conteneur, utile pour une identification facile.
+    container_name: hcl-cli-tools
+    # Montage des volumes.
+    # Le répertoire courant de votre projet local ('.') est monté dans '/app' à l'intérieur du conteneur.
+    # Cela permet au conteneur d'accéder à vos fichiers HCL et à d'autres ressources du projet.
+    volumes:
+      - .:/app
+      # Vous pouvez ajouter d'autres volumes si nécessaire, par exemple pour les identifiants AWS:
+      # - ~/.aws:/root/.aws:ro # Monte votre répertoire AWS credentials en lecture seule
+      # - ~/.ssh:/root/.ssh:ro # Monte votre répertoire SSH keys en lecture seule
+    
+    # Définit le répertoire de travail par défaut à l'intérieur du conteneur.
+    # Toutes les commandes exécutées dans le conteneur commenceront à partir de ce chemin.
+    working_dir: /app
+    
+    # Variables d'environnement spécifiques au service.
+    # Celles-ci peuvent être utilisées pour configurer les outils HashiCorp ou d'autres paramètres.
+    environment:
+      # Exemple de variables pour Terraform ou AWS CLI
+      # WARNING: N'incluez PAS de clés secrètes directement dans le docker-compose.yml
+      #          Utilisez plutôt des fichiers .env ou des secrets Docker.
+      # AWS_REGION: "eu-west-1"
+      # AWS_ACCESS_KEY_ID: "VOTRE_CLE_ACCES_ID"
+      # AWS_SECRET_ACCESS_KEY: "VOTRE_CLE_SECRETE"
+      
+      # Exemple de variables pour Vault
+      # VAULT_ADDR: "http://vault:8200" # Si vous lancez un serveur Vault ailleurs
+      # VAULT_TOKEN: "VOTRE_VAULT_TOKEN" # À gérer avec précaution
+      
+      # Exemple de variables pour MinIO
+      # MINIO_SERVER_URL: "http://minio:9000"
+      # MINIO_ACCESS_KEY: "minioadmin"
+      # MINIO_SECRET_KEY: "minioadmin"
 
-Une fois ces �tapes termin�es, vous pouvez lancer votre application avec `docker-compose up -d`.
+    # Dépendances de ce service.
+    # Ce service démarrera après que le service 'minio' soit prêt.
+    depends_on:
+      minio:
+        condition: service_healthy # Attend que le healthcheck de MinIO réussisse
+    
+    # Ports exposés si ce conteneur devait lui-même héberger un service HCL
+    # (Par exemple, si vous vouliez lancer Vault en mode dev à l'intérieur de ce conteneur)
+    # ports:
+    #   - "8200:8200" # Vault
+    #   - "8500:8500" # Consul
+    
+    # Commandes par défaut du conteneur.
+    # Pour un conteneur CLI de développement, "tail -f /dev/null" le maintient en vie.
+    # Vous interagirez généralement avec ce conteneur via `docker compose run hcl-cli-tools <command>`.
+    command: ["tail", "-f", "/dev/null"]
 
+  # Service optionnel : MinIO pour un stockage compatible S3 local.
+  # Très utile pour simuler un backend Terraform (stockage de l'état) ou d'autres services S3.
+  minio:
+    image: minio/minio:latest # Utilise l'image officielle de MinIO
+    container_name: minio
+    # Mappe les ports du conteneur vers l'hôte.
+    # 9000: API MinIO, 9001: Console web MinIO
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    # Variables d'environnement pour configurer MinIO.
+    # WARNING: Ces identifiants sont par défaut. Pour la production, utilisez des valeurs fortes
+    #          et gérez-les de manière sécurisée (secrets Docker, .env, etc.).
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    # Commande pour démarrer le serveur MinIO et sa console web.
+    command: server /data --console-address ":9001"
+    # Monte un volume nommé pour persister les données de MinIO.
+    # Les données ne seront pas perdues si le conteneur est recréé.
+    volumes:
+      - minio_data:/data
+    # Healthcheck pour s'assurer que MinIO est prêt avant que d'autres services ne le dépendent.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
-N'oubliez pas de remplacer les exemples par vos propres valeurs et configurations.  Ce fichier est un point de d�part et doit �tre adapt� � votre projet sp�cifique.
+# Section des volumes nommés.
+# Les volumes sont gérés par Docker et permettent de persister les données
+# au-delà du cycle de vie des conteneurs.
+volumes:
+  minio_data: # Volume pour les données de MinIO
+```
+
+---
+
+### Comment utiliser ce setup
+
+1.  **Enregistrez les fichiers** :
+    *   Créez un dossier racine pour votre projet HCL.
+    *   Dans ce dossier, créez le fichier `Dockerfile` avec le contenu fourni.
+    *   Dans le même dossier, créez le fichier `docker-compose.yml` avec le contenu fourni.
+
+2.  **Construisez et démarrez les services** :
+    Ouvrez un terminal dans le dossier racine de votre projet et exécutez :
+    ```bash
+    docker compose build # Construit l'image hcl-cli-tools
+    docker compose up -d # Démarre les services en arrière-plan
+    ```
+
+3.  **Interagissez avec le conteneur `hcl-cli-tools`** :
+    Pour exécuter une commande Terraform (par exemple) dans votre projet :
+    ```bash
+    docker compose run --rm hcl-cli-tools terraform init
+    docker compose run --rm hcl-cli-tools terraform plan
+    docker compose run --rm hcl-cli-tools vault status
+    docker compose run --rm hcl-cli-tools consul members
+    ```
+    *   `--rm` : Supprime le conteneur temporaire après son exécution.
+    *   `hcl-cli-tools` : Le nom du service Docker Compose.
+    *   `terraform init` : La commande que vous voulez exécuter.
+
+    Pour obtenir un shell interactif dans le conteneur :
+    ```bash
+    docker compose exec hcl-cli-tools bash
+    # Une fois dans le conteneur, vous pouvez exécuter n'importe quelle CLI HCL
+    # Exemple: ls -l /app, terraform --version, vault status
+    exit # Pour quitter le shell du conteneur
+    ```
+
+4.  **Accédez à MinIO** :
+    *   Console Web : `http://localhost:9001` (Nom d'utilisateur: `minioadmin`, Mot de passe: `minioadmin`)
+    *   API : `http://localhost:9000`
+
+5.  **Arrêtez les services** :
+    Lorsque vous avez terminé, dans le terminal :
+    ```bash
+    docker compose down # Arrête et supprime les conteneurs et les réseaux
+    ```
+    Si vous voulez aussi supprimer le volume MinIO (attention, cela efface les données persistées) :
+    ```bash
+    docker compose down -v
+    ```
+
+---
+
+### Configuration pour le développement
+
+*   **Volumes** : Le montage du répertoire de projet (`.:/app`) est crucial pour le développement. Toutes les modifications que vous apportez à vos fichiers HCL localement sont immédiatement disponibles dans le conteneur.
+*   **CLIs multiples** : Le `Dockerfile` inclut les CLIs les plus courantes, offrant un environnement complet pour différents types de projets HCL.
+*   **MinIO local** : Fournit un environnement de test isolé pour les configurations Terraform nécessitant un backend S3, sans impacter les ressources cloud réelles.
+*   **`depends_on` avec `service_healthy`** : Assure que MinIO est pleinement opérationnel avant que les outils HCL ne tentent d'y accéder, évitant les erreurs de connexion au démarrage.
+*   **Variables d'environnement** : Les commentaires suggèrent où placer des variables importantes comme les identifiants AWS ou l'adresse de Vault. Pour la production ou les environnements partagés, envisagez d'utiliser des fichiers `.env` ou des secrets Docker pour la sécurité.
+
+Ce setup offre une base solide et flexible pour le développement de projets HCL, permettant une collaboration facilitée et un environnement de travail cohérent pour toute l'équipe.
